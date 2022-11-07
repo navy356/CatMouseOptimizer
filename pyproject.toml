@@ -6,7 +6,7 @@ authors = [
 ]
 description = "Cat and mouse based algorithm implementation"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -16,3 +16,26 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/navy356/catmouse"
 "Bug Tracker" = "https://github.com/navy356/catmouse/issues"
+
+[tool.poetry]
+name = "cat-mouse"
+version = "0.0.1"
+authors = [
+  "Navya Newatia <newatian@gmail.com>",
+]
+description = "Cat and mouse based algorithm implementation"
+readme = "README.md"
+
+packages = [{include = "poetry_demo"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+numpy = "^1.23.4"
+matplotlib = "^3.6.2"
+pyqt5 = "^5.15.7"
+scipy = "^1.9.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

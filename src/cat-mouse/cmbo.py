@@ -1,8 +1,17 @@
 import numpy
+from numpy import arange
+from numpy import exp
+from numpy import sqrt
+from numpy import cos
+from numpy import e
+from numpy import pi
+from numpy import meshgrid
 import random
+import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 
 class CMBO:
-    def __init__(self,costfunc,parameters,population_size,iterations=100,domain=(-100,100),w=0.8,c=2):
+    def __init__(self,costfunc,parameters,population_size,iterations=1000,domain=(-100,100),w=0.8,c=2):
         self.costfunc = costfunc
         self.parameters = parameters
         self.population_size = population_size
@@ -109,7 +118,7 @@ class CMBO:
                         self.gbest_cost = numpy.take(temp_mice_costs[i],0)
             if numpy.take(temp_cat_costs[i],0)<numpy.take(self.costs[i+self.mice_shape[0]],0):
                 self.population[i+self.mice_shape[0]]=self.cats[i]
-                if numpy.take(temp_cat_costs[i],0) < self.take(self.pbest_costs.costs[i+self.mice_shape[0]],0):
+                if numpy.take(temp_cat_costs[i],0) < numpy.take(self.pbest_costs[i+self.mice_shape[0]],0):
                     self.pbest[i+self.mice_shape[0]] = self.cats[i]
                     self.pbest_costs[i] = temp_cat_costs[i]
                     if numpy.take(temp_cat_costs[i],0) < self.gbest_cost:
@@ -121,9 +130,10 @@ class CMBO:
 
     def start(self):
         self.init()
+        x= []
+        y= []
+        #plt.xlim([0, 0.1])
         for i in range(0,self.iterations):
-            if (i%200==0):
-                print(self.gbest)
             self.gen_cats()
             self.gen_mice()
             self.chase()
@@ -131,9 +141,19 @@ class CMBO:
             self.approach()
             self.catch()
             self.sort()
+            x.append(self.gbest_cost)
+            y.append(i)
+        x= numpy.append(x,[])
+        y = numpy.append(y,[])
+        plt.plot(x,y)
+        plt.xlabel("Optimized solution cost")
+        plt.ylabel("Number of iterations")
+        plt.show()
 
+def objective(x):
+    return x*x
 
-cmbo = CMBO(lambda x: x*x,1,10)
+cmbo = CMBO(objective,1,100,domain=(-99999,99999))
 cmbo.start()
 print(cmbo.gbest)
 print(cmbo.gbest_cost)
