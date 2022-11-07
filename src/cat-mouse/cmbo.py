@@ -2,7 +2,7 @@ import numpy
 import random
 
 class CMBO:
-    def __init__(self,costfunc,parameters,population_size,iterations=50,domain=(-100,100)):
+    def __init__(self,costfunc,parameters,population_size,iterations=100,domain=(-100,100),w=0.8,c=2):
         self.costfunc = costfunc
         self.parameters = parameters
         self.population_size = population_size
@@ -15,9 +15,27 @@ class CMBO:
         self.mice = numpy.zeros(self.mice_shape)
         self.cat_shape = (population_size-population_size//2,parameters)
         self.cats = numpy.zeros(self.cat_shape)
+        self.update_size = (1,parameters)
+        self.gbest = numpy.zeros(self.update_size)
+        self.gbest_cost = 0
+        self.pbest_costs = numpy.zeros((population_size,1))
+        self.pbest = numpy.zeros(self.shape)
+        self.cat_velocities = numpy.zeros(self.cat_shape)
+        self.mice_velocities = numpy.zeros(self.mice_shape)
+        self.w = w
+        self.c = c
 
-    def init_population(self):
-        self.population = numpy.random.rand(*self.shape) * (self.domain[1] - self.domain[0]) + self.domain[0];
+    def init(self):
+        self.population = numpy.random.rand(*self.shape) * ((self.domain[1] - self.domain[0]) + self.domain[0])
+        self.cat_velocities = numpy.random.rand(*self.cat_shape) * ((self.domain[1] - self.domain[0]) + self.domain[0])
+        self.mice_velocities = numpy.random.rand(*self.cat_shape) * ((self.domain[1] - self.domain[0]) + self.domain[0])
+        self.calculate_cost()
+        self.pbest = self.population
+        self.pbest_costs = self.costs
+        self.sort()
+        if self.population_size > 0:
+            self.gbest = self.population[0]
+            self.gbest_cost = numpy.take(self.costs,0)
 
     def calculate_cost(self,arr=None):
         if arr is not None:
@@ -28,6 +46,7 @@ class CMBO:
         indices = numpy.argsort(self.costs)
         self.costs = numpy.take(self.costs,indices,0)
         self.population = numpy.take(self.population,indices,0)
+        self.pbest = numpy.take(self.population,indices,0)
 
     def gen_mice(self):
         self.mice = self.population[0:self.mice_shape[0]]
@@ -37,24 +56,84 @@ class CMBO:
     def gen_cats(self):
         self.cats = self.population[self.mice_shape[0]:]
 
-    def update_cats(self):
-        r = numpy.random.rand(*self.cat_shape) 
-        I = numpy.random.rand(*self.cat_shape)
-        temp_cats = self.cats + r*(self.mice - numpy.round_(1+I)*self.cats)
-        temp_costs = self.calculate_cost(temp_cats)
+    def chase(self):
+        self.cat_velocities = self.w*self.cat_velocities + self.c*numpy.random.rand(self.cat_shape[0],1)*self.mice
+
+    def flee(self):
+        gbest = None
+        pbest = None
+        gbest = numpy.atleast_2d(self.gbest).repeat(repeats=self.cat_shape[0]-0,axis=0)
+        if self.cat_shape!=self.mice_shape:
+            pbest = numpy.r_[self.pbest[0:self.mice_shape[0]], numpy.zeros((1,self.parameters))]
+        else:
+            pbest = self.pbest[0:self.mice_shape[0]]
+        pbest_dist = self.calculate_distance(self.mice,pbest)
+        gbest_dist = self.calculate_distance(self.mice,gbest)
+        cat_dist = self.calculate_distance(self.mice, self.cats)
+        sum_dist = pbest_dist + gbest_dist + cat_dist
+        fp = pbest_dist/sum_dist
+        fg = gbest_dist/sum_dist
+        fc = cat_dist/sum_dist
+        self.mice_velocities = fc*(self.cat_velocities+self.mice_velocities)+fp*numpy.random.rand(self.cat_shape[0],1)*(pbest-self.mice_velocities)+fg*numpy.random.rand(self.cat_shape[0],1)*(gbest-self.mice_velocities)
+
+    def approach(self):
+        self.mice = self.mice + self.mice_velocities
+        numpy.clip(self.mice,self.domain[0],self.domain[1],out=self.mice)
+        self.cats = self.cats + self.cat_velocities
+        numpy.clip(self.cats,self.domain[0],self.domain[1],out=self.cats)
+        
+    def catch(self):
         for i in range(0,self.population_size//2):
-            if temp_costs[i] < self.costs[self.cat_shape[0]+i]:
-                self.cats[i] = temp_cats[i]
+            r = random.randint(0,self.parameters-1)
+            self.mice[i][r] = random.random() * ((self.domain[1] - self.domain[0]) + self.domain[0])
+        temp_mice_costs = self.calculate_cost(self.mice)
+        temp_cat_costs = self.calculate_cost(self.cats)
+        caught = numpy.greater(temp_mice_costs,temp_cat_costs)
+        for i in range(0,self.population_size//2):
+            if numpy.take(caught[i],0):
+                self.cats[i]=self.mice[i]
+                self.mice[i] = numpy.random.rand(1,self.parameters) * ((self.domain[1] - self.domain[0]) + self.domain[0])
+            else:
+                self.cat_velocities[i] = numpy.random.rand(1,self.parameters) * ((self.domain[1] - self.domain[0]) + self.domain[0])
 
-    def update_mice(self):
-        Haven = self.population
+        temp_mice_costs = self.calculate_cost(self.mice)
+        temp_cat_costs = self.calculate_cost(self.cats)
+        for i in range(0,self.population_size//2):
+            if numpy.take(temp_mice_costs[i],0)<numpy.take(self.costs[i],0):
+                self.population[i] = self.mice[i]
+                if numpy.take(temp_mice_costs[i],0) < numpy.take(self.pbest_costs[i],0):
+                    self.pbest[i] = self.mice[i]
+                    self.pbest_costs[i] = temp_mice_costs[i]
+                    if numpy.take(temp_mice_costs[i],0) < self.gbest_cost:
+                        self.gbest = self.mice[i] 
+                        self.gbest_cost = numpy.take(temp_mice_costs[i],0)
+            if numpy.take(temp_cat_costs[i],0)<numpy.take(self.costs[i+self.mice_shape[0]],0):
+                self.population[i+self.mice_shape[0]]=self.cats[i]
+                if numpy.take(temp_cat_costs[i],0) < self.take(self.pbest_costs.costs[i+self.mice_shape[0]],0):
+                    self.pbest[i+self.mice_shape[0]] = self.cats[i]
+                    self.pbest_costs[i] = temp_cat_costs[i]
+                    if numpy.take(temp_cat_costs[i],0) < self.gbest_cost:
+                        self.gbest = self.cats[i] 
+                        self.gbest_cost = numpy.take(temp_cat_costs[i],0)
+
+    def calculate_distance(self,x,y):
+        return numpy.linalg.norm(x-y)
+
+    def start(self):
+        self.init()
+        for i in range(0,self.iterations):
+            if (i%200==0):
+                print(self.gbest)
+            self.gen_cats()
+            self.gen_mice()
+            self.chase()
+            self.flee()
+            self.approach()
+            self.catch()
+            self.sort()
 
 
-cmbo = CMBO(lambda x,y: x*y,2,11)
-cmbo.init_population()
-cmbo.calculate_cost()
-cmbo.sort()
-cmbo.gen_cats()
-cmbo.gen_mice()
-print(cmbo.costs)
-cmbo.update_cats()
+cmbo = CMBO(lambda x: x*x,1,10)
+cmbo.start()
+print(cmbo.gbest)
+print(cmbo.gbest_cost)
